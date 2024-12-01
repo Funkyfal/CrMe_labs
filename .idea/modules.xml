@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ProjectModuleManager">
+    <modules>
+      <module fileurl="file://$PROJECT_DIR$/CrMe_labs.iml" filepath="$PROJECT_DIR$/CrMe_labs.iml" />
+      <module fileurl="file://$PROJECT_DIR$/Lab_2_Polynom/Lab_2_Polynom.iml" filepath="$PROJECT_DIR$/Lab_2_Polynom/Lab_2_Polynom.iml" />
+    </modules>
+  </component>
+</project>
