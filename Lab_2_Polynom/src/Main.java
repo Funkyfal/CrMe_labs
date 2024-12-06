@@ -8,53 +8,39 @@ public class Main {
         return a ^ b;
     }
 
-    public static long divide (long num, long denom, long[] quot) {
-        long nD = getPolynomDegree(num);
-        long dD = getPolynomDegree(denom);
-        quot[0] = 0;
-        while (nD >= dD) {
-            quot[0] ^= (1L << (nD - dD));
-            num ^= denom << (nD - dD);
-            nD = getPolynomDegree(num);
-        }
-        return num;
-    }
-
-    public static long getPolynomDegree(long poly) {
+    public static long getPolynomDegree(long a) {
         long degree = -1;
-        while (poly != 0) {
-            poly >>= 1;
+        while (a != 0) {
+            a >>= 1;
             degree++;
         }
         return degree;
     }
 
-    public static long multiply(long poly1, long poly2, long polynom) {
-        long irreduciblePolyDegree = getPolynomDegree(polynom);
+    public static long multiply(long a, long b, long mod) {
+        long modDegree = getPolynomDegree(mod);
         long result = 0;
-        while (poly1 != 0) {
-            if ((poly1 & 1) == 1) {
-                result ^= poly2;
-            }
-            poly2 <<= 1;
-            if ((poly2 & (1L << irreduciblePolyDegree)) != 0) {
-                poly2 ^= polynom;
-            }
-            poly1 >>= 1;
+        while (a != 0) {
+            if ((a & 1) == 1)
+                result ^= b;
+            a >>= 1;
+            b <<= 1;
+            if ((b & (1L << modDegree)) != 0)
+                b ^= mod;
         }
 
         return result;
     }
-    public static long inverse(long poly, long polynom) {
-        long r0 = polynom;
-        long r1 = poly;
+    public static long inverse(long a, long mod) {
+        long r0 = mod;
+        long r1 = a;
         long t = 0, s = 1;
         long[] quotient = new long[1];
         while (r1 != 0) {
             long buf = divide(r0, r1, quotient);
             r0 = r1;
             r1 = buf;
-            buf = t ^ multiply(quotient[0], s, polynom);
+            buf = t ^ multiply(quotient[0], s, mod);
             t = s;
             s = buf;
         }
@@ -62,16 +48,28 @@ public class Main {
         return t;
     }
 
-    public static long mod(long poly, long irreduciblePolynomial) {
-        long polyDegree = getPolynomDegree(poly);
-        long irreducibleDegree = getPolynomDegree(irreduciblePolynomial);
+    public static long divide (long a, long b, long[] quot) {
+        long aDegree = getPolynomDegree(a);
+        long bDegree = getPolynomDegree(b);
+        quot[0] = 0;
+        while (aDegree >= bDegree) {
+            quot[0] ^= (1L << (aDegree - bDegree));
+            a ^= b << (aDegree - bDegree);
+            aDegree = getPolynomDegree(a);
+        }
+        return a;
+    }
 
-        while (polyDegree >= irreducibleDegree) {
-            poly ^= irreduciblePolynomial << (polyDegree - irreducibleDegree);
-            polyDegree = getPolynomDegree(poly);
+    public static long mod(long a, long mod) {
+        long polyDegree = getPolynomDegree(a);
+        long modDegree = getPolynomDegree(mod);
+
+        while (polyDegree >= modDegree) {
+            a ^= mod << (polyDegree - modDegree);
+            polyDegree = getPolynomDegree(a);
         }
 
-        return poly;
+        return a;
     }
 
 
@@ -123,7 +121,7 @@ public class Main {
             poly &= ~(1L << (degree + 1));
         }
 
-        return result.length() > 0 ? result.toString() : "0";
+        return !result.isEmpty() ? result.toString() : "0";
     }
 
     public static void main(String[] args) throws IOException {
@@ -152,11 +150,11 @@ public class Main {
                 f2 = mod(f2, irreduciblePolynomial);
                 result = divide(f1, f2, new long[]{irreduciblePolynomial});
                 break;
-            case "ˆ":
+            case "^":
                 long power = Long.parseLong(parts[2]);
                 result = power(f1, power, irreduciblePolynomial);
                 break;
-            case "ˆ-1":
+            case "^-1":
                 result = inverse(f1, irreduciblePolynomial);
                 break;
             default:
