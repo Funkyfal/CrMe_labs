@@ -16,7 +16,6 @@ fun main(args: Array<String>) {
 
     val outputFilePath = "out.bin"
 
-    // Считываем ключ из файла
     val key = File(keyFilePath).readBytes()
     if (key.size != 24) {
         println("Ключ должен быть длиной 24 байта (8 байт для каждого из 3 ключей).")
@@ -63,15 +62,17 @@ fun main(args: Array<String>) {
 // Реализация 3DES шифрования
 fun tripleDesEncrypt(data: ByteArray, key1: ByteArray, key2: ByteArray, key3: ByteArray): ByteArray {
     var result = desEncrypt(data, key1)
-    result = desDecrypt(result, key2)
-    return desEncrypt(result, key3)
+//    result = desDecrypt(result, key2)
+//    return desEncrypt(result, key3)
+    return result
 }
 
 // Реализация 3DES расшифрования
 fun tripleDesDecrypt(data: ByteArray, key1: ByteArray, key2: ByteArray, key3: ByteArray): ByteArray {
-    var result = desDecrypt(data, key3)
-    result = desEncrypt(result, key2)
-    return desDecrypt(result, key1)
+//    var result = desDecrypt(data, key3)
+//    result = desEncrypt(result, key2)
+//    return desDecrypt(result, key1)
+    return desDecrypt(data, key1)
 }
 
 fun desEncrypt(data: ByteArray, key: ByteArray): ByteArray {
@@ -220,8 +221,24 @@ fun sBoxSubstitution(input: BooleanArray): BooleanArray {
 fun generateSubKeys(keyBits: BooleanArray): Array<BooleanArray> {
     val subKeys = Array(16) { BooleanArray(48) }
 
+    println("Ключи до перестановки")
+    for(i in keyBits.indices){
+        if (!keyBits[i]) print(0) else print(1)
+        if ( (i + 1) % 8 == 0)
+            print(" ")
+    }
+    println()
+
     // Применяем перестановку PC1
     val permutedKey = permute(keyBits, PC1)
+
+    println("Ключи после перестановки")
+    for(i in permutedKey.indices){
+        if (!permutedKey[i]) print(0) else print(1)
+        if ( (i + 1) % 8 == 0)
+            print(" ")
+    }
+    println()
 
     // Разделяем ключ на две половины
     var left = permutedKey.copyOfRange(0, 28)
