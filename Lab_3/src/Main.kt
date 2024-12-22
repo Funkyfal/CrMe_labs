@@ -1,179 +1,158 @@
 import java.io.File
-import java.util.BitSet
 
 fun main() {
-    println("Введите режим работы (1 для шифрования, 2 для дешифрования):")
-    val mode = readLine()?.toIntOrNull() ?: error("Некорректный ввод")
+    val inputFile = "in.bin"
+    val keyFile = "key.bin"
+    val outputFile = "out.bin"
 
-    val inputFileName = "in.bin"
-    val keyFileName = "key.bin"
-    val outputFileName = "out.bin"
 
-    // Загрузка данных из файлов
-    val inputFile = File(inputFileName)
-    val keyFile = File(keyFileName)
+    // Выбор операции
+    println("Выберите операцию: 1 - Зашифровать, 2 - Расшифровать")
+    val operation = readlnOrNull()?.toIntOrNull()
 
-    val inputBlocks = inputFile.readBytes().toList().chunked(8).map { BitSet.valueOf(it.toByteArray()) }
-    val keyBytes = keyFile.readBytes()
-
-    if (keyBytes.size != 24) error("Ключ должен содержать 24 байта!")
-
-    // Разделение ключа на три 8-байтных ключа
-    val keys = listOf(
-        BitSet.valueOf(keyBytes.sliceArray(0..7)),
-        BitSet.valueOf(keyBytes.sliceArray(8..15)),
-        BitSet.valueOf(keyBytes.sliceArray(16..23))
-    )
-
-    // Генерация подключей для каждого ключа
-    val subkeys = keys.map { key ->
-        mutableListOf<BitSet>().apply { generateKeys(key, this) }
+    if (operation == null || (operation != 1 && operation != 2)) {
+        println("Неверный выбор операции!")
+        return
     }
 
-    // Обработка блоков данных по схеме 3DES (EDE или DED)
-    val processedBlocks = when (mode) {
-        1 -> { // Шифрование
-            println("Шифрование...")
-            inputBlocks.map { block ->
-                tripleDesEncrypt(block, subkeys, encrypt = true)
-            }
-        }
-        2 -> { // Дешифрование
-            println("Дешифрование...")
-            inputBlocks.map { block ->
-                tripleDesEncrypt(block, subkeys, encrypt = false)
-            }
-        }
-        else -> error("Неверный режим работы")
+    // Чтение входных данных
+    val inputData = File(inputFile).readBytes()
+    val keyData = File(keyFile).readBytes()
+
+    if (keyData.size != 8) {
+        println("Ключ должен быть размером 8 байт!")
+        return
     }
 
-    // Запись результата в файл
-    val outputFile = File(outputFileName)
-    outputFile.writeBytes(processedBlocks.flatMap { it.toByteArray().toList() }.toByteArray())
+    // Выполнение операции
+    val result = when (operation) {
+        1 -> encrypt(inputData, keyData) // Шифрование
+        2 -> decrypt(inputData, keyData) // Расшифровка
+        else -> byteArrayOf()
+    }
 
-    println("Обработка завершена. Результат сохранён в $outputFileName")
+    // Запись результата
+    File(outputFile).writeBytes(result)
+    println("Операция завершена. Результат записан в $outputFile.")
 }
 
-// Реализация 3DES по схеме EDE или DED
-fun tripleDesEncrypt(block: BitSet, subkeys: List<List<BitSet>>, encrypt: Boolean): BitSet {
-    return if (encrypt) {
-        // Шифрование: E -> D -> E
-        val encrypted = desEncryptBlock(block, subkeys[0], decrypt = false)
-        val decrypted = desEncryptBlock(encrypted, subkeys[1], decrypt = true)
-        desEncryptBlock(decrypted, subkeys[2], decrypt = false)
-    } else {
-        // Дешифрование: D -> E -> D
-        val decrypted = desEncryptBlock(block, subkeys[2], decrypt = true)
-        val encrypted = desEncryptBlock(decrypted, subkeys[1], decrypt = false)
-        desEncryptBlock(encrypted, subkeys[0], decrypt = true)
-    }
+// Функция шифрования
+fun encrypt(data: ByteArray, key: ByteArray): ByteArray {
+    return processDES(data, key, true)
 }
 
-// Функция для перестановки
-fun permute(input: BitSet, output: BitSet, table: IntArray, n: Int) {
-    for (i in 0 until n) {
-        output.set(n - i - 1, input.get(input.size() - table[i]))
-    }
+// Функция расшифровки
+fun decrypt(data: ByteArray, key: ByteArray): ByteArray {
+    return processDES(data, key, false)
 }
 
-// Генерация подключей
-fun generateKeys(key: BitSet, subkeys: MutableList<BitSet>) {
-    val key56 = BitSet(56)
-    permute(key, key56, PC1, 56)
+// Основная функция DES
+fun processDES(data: ByteArray, key: ByteArray, encrypt: Boolean): ByteArray {
+    val blockSize = 8
+    val result = mutableListOf<Byte>()
 
-    val left = BitSet(28)
-    val right = BitSet(28)
-
-    for (i in 0 until 28) {
-        left.set(i, key56[i])
-        right.set(i, key56[28 + i])
+    // Разделение данных на блоки
+    val blocks = data.asList().chunked(blockSize)
+    for (block in blocks) {
+        val paddedBlock = block.toByteArray().padToBlockSize(blockSize)
+        val processedBlock = processBlock(paddedBlock, key, encrypt)
+        result.addAll(processedBlock.toList())
     }
 
-    for (round in 0 until 16) {
-        // Сдвиг влево
-        val shiftCount = SHIFT_TABLE[round]
-        left.leftShift(shiftCount)
-        right.leftShift(shiftCount)
-
-        // Перестановка PC2 для получения подключа
-        val combined = BitSet(56)
-        for (i in 0 until 28) {
-            combined.set(i, left[i])
-            combined.set(28 + i, right[i])
-        }
-        val subkey = BitSet(48)
-        permute(combined, subkey, PC2, 48)
-
-        subkeys.add(subkey)
-    }
+    return result.toByteArray()
 }
 
-// Сдвиг бит влево
-fun BitSet.leftShift(shiftCount: Int) {
-    for (i in (size() - 1 downTo shiftCount)) {
-        set(i, get(i - shiftCount))
+// Обработка одного блока
+fun processBlock(block: ByteArray, key: ByteArray, encrypt: Boolean): ByteArray {
+    val initialPermuted = permute(block, IP)
+    val (left, right) = initialPermuted.splitBlock()
+
+    val roundKeys = generateRoundKeys(key)
+    val finalKeys = if (encrypt) roundKeys else roundKeys.reversed()
+
+    var l = left
+    var r = right
+
+    for (key in finalKeys) {
+        val temp = r
+        r = l xor f(r, key)
+        l = temp
     }
-    for (i in 0 until shiftCount) {
-        set(i, false)
-    }
+
+    val combined = r + l
+    return permute(combined, IP_INV)
 }
 
-// Функция DES-шифрования одного блока
-fun desEncryptBlock(block: BitSet, subkeys: List<BitSet>, decrypt: Boolean = false): BitSet {
-    val permutedBlock = BitSet(64)
-    permute(block, permutedBlock, IP, 64)
+// Функция F
+fun f(block: ByteArray, key: ByteArray): ByteArray {
+    val expanded = permute(block, E)
+    val xored = expanded xor key
+    val substituted = substitute(xored)
+    return permute(substituted, P)
+}
 
-    val L = BitSet(32)
-    val R = BitSet(32)
-    for (i in 0 until 32) {
-        L.set(31 - i, permutedBlock[63 - i])
-        R.set(31 - i, permutedBlock[31 - i])
+// Замена через S-блоки
+fun substitute(block: ByteArray): ByteArray {
+    val result = mutableListOf<Byte>()
+
+    for (i in 0 until block.size step 6) {
+        val chunk = block.copyOfRange(i, i + 6)
+        val row = ((chunk[0].toInt() and 0b100000) shr 4) or (chunk[5].toInt() and 1)
+        val col = (chunk[1].toInt() and 0b011110) shr 1
+
+        val sBoxValue = S_BOXES[i / 6][row][col]
+        result.add(sBoxValue.toByte())
     }
 
-    for (round in 0 until 16) {
-        val temp = R.clone() as BitSet
-        val subkeyIndex = if (decrypt) 15 - round else round
-        R.xor(fFunction(R, subkeys[subkeyIndex]))
-        L.xor(temp)
+    return result.toByteArray()
+}
+
+// Генерация раундовых ключей
+fun generateRoundKeys(key: ByteArray): List<ByteArray> {
+    val permutedKey = permute(key, PC1)
+    var (left, right) = permutedKey.splitBlock()
+
+    val roundKeys = mutableListOf<ByteArray>()
+    for (shift in SHIFT_TABLE) {
+        left = left.circularLeftShift(shift)
+        right = right.circularLeftShift(shift)
+        roundKeys.add(permute(left + right, PC2))
     }
 
-    val combined = BitSet(64)
-    for (i in 0 until 32) {
-        combined.set(63 - i, R[31 - i])
-        combined.set(31 - i, L[31 - i])
-    }
+    return roundKeys
+}
 
-    val output = BitSet(64)
-    permute(combined, output, IP_INV, 64)
+// Утилиты
+fun ByteArray.splitBlock(): Pair<ByteArray, ByteArray> =
+    this.copyOfRange(0, this.size / 2) to this.copyOfRange(this.size / 2, this.size)
+
+fun ByteArray.padToBlockSize(size: Int): ByteArray =
+    if (this.size == size) this else this + ByteArray(size - this.size) { 0 }
+
+fun permute(input: ByteArray, table: IntArray): ByteArray {
+    val output = ByteArray(table.size / 8) // Результат должен иметь размер кратный байтам
+    for (i in table.indices) {
+        val bit = (input[(table[i] - 1) / 8].toInt() shr (7 - (table[i] - 1) % 8)) and 1
+        output[i / 8] = (output[i / 8].toInt() or (bit shl (7 - (i % 8)))).toByte()
+    }
     return output
 }
-fun fFunction(R: BitSet, subkey: BitSet): BitSet {
-    val expandedR = BitSet(48)
-    permute(R, expandedR, E, 48)
 
-    expandedR.xor(subkey)
 
-    val output = BitSet(32)
-    for (i in 0 until 8) {
-        val row = (expandedR[47 - 6 * i].toInt() shl 1) or expandedR[47 - 6 * i - 5].toInt()
-        val col = (expandedR[47 - 6 * i - 1].toInt() shl 3) or
-                (expandedR[47 - 6 * i - 2].toInt() shl 2) or
-                (expandedR[47 - 6 * i - 3].toInt() shl 1) or
-                expandedR[47 - 6 * i - 4].toInt()
-        val value = S_BOXES[i][row][col]
+infix fun ByteArray.xor(other: ByteArray): ByteArray =
+    this.zip(other) { a, b -> (a.toInt() xor b.toInt()).toByte() }.toByteArray()
 
-        for (j in 0 until 4) {
-            output.set(31 - 4 * i - j, (value shr j) and 1 == 1)
-        }
+fun ByteArray.circularLeftShift(bits: Int): ByteArray {
+    val value = this.fold(0L) { acc, byte -> (acc shl 8) or (byte.toLong() and 0xFF) }
+    val sizeBits = this.size * 8
+
+    val shiftedValue = ((value shl bits) or (value shr (sizeBits - bits))) and ((1L shl sizeBits) - 1)
+
+    return ByteArray(this.size) { i ->
+        ((shiftedValue shr ((this.size - 1 - i) * 8)) and 0xFF).toByte()
     }
+}
 
-    val permutedOutput = BitSet(32)
-    permute(output, permutedOutput, P, 32)
-    return permutedOutput
-}
-private fun Boolean.toInt(): Int {
-    return if(this) 1 else 0
-}
 
 val IP = intArrayOf(58, 50, 42, 34, 26, 18, 10, 2, 60, 52, 44, 36, 28, 20, 12, 4,
     62, 54, 46, 38, 30, 22, 14, 6, 64, 56, 48, 40, 32, 24, 16, 8,
