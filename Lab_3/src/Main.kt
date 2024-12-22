@@ -14,22 +14,35 @@ fun main() {
     val keyFile = File(keyFileName)
 
     val inputBlocks = inputFile.readBytes().toList().chunked(8).map { BitSet.valueOf(it.toByteArray()) }
-    val keyBlocks = keyFile.readBytes().toList().chunked(8).map { BitSet.valueOf(it.toByteArray()) }
-    val key = keyBlocks.firstOrNull() ?: error("Ключ не найден")
+    val keyBytes = keyFile.readBytes()
 
-    // Генерация подключей
-    val subkeys = mutableListOf<BitSet>()
-    generateKeys(key, subkeys)
+    if (keyBytes.size != 24) error("Ключ должен содержать 24 байта!")
 
-    // Обработка блоков
+    // Разделение ключа на три 8-байтных ключа
+    val keys = listOf(
+        BitSet.valueOf(keyBytes.sliceArray(0..7)),
+        BitSet.valueOf(keyBytes.sliceArray(8..15)),
+        BitSet.valueOf(keyBytes.sliceArray(16..23))
+    )
+
+    // Генерация подключей для каждого ключа
+    val subkeys = keys.map { key ->
+        mutableListOf<BitSet>().apply { generateKeys(key, this) }
+    }
+
+    // Обработка блоков данных по схеме 3DES (EDE или DED)
     val processedBlocks = when (mode) {
-        1 -> {
+        1 -> { // Шифрование
             println("Шифрование...")
-            inputBlocks.map { block -> desEncryptBlock(block, subkeys) }
+            inputBlocks.map { block ->
+                tripleDesEncrypt(block, subkeys, encrypt = true)
+            }
         }
-        2 -> {
+        2 -> { // Дешифрование
             println("Дешифрование...")
-            inputBlocks.map { block -> desEncryptBlock(block, subkeys, decrypt = true) }
+            inputBlocks.map { block ->
+                tripleDesEncrypt(block, subkeys, encrypt = false)
+            }
         }
         else -> error("Неверный режим работы")
     }
@@ -41,6 +54,21 @@ fun main() {
     println("Обработка завершена. Результат сохранён в $outputFileName")
 }
 
+// Реализация 3DES по схеме EDE или DED
+fun tripleDesEncrypt(block: BitSet, subkeys: List<List<BitSet>>, encrypt: Boolean): BitSet {
+    return if (encrypt) {
+        // Шифрование: E -> D -> E
+        val encrypted = desEncryptBlock(block, subkeys[0], decrypt = false)
+        val decrypted = desEncryptBlock(encrypted, subkeys[1], decrypt = true)
+        desEncryptBlock(decrypted, subkeys[2], decrypt = false)
+    } else {
+        // Дешифрование: D -> E -> D
+        val decrypted = desEncryptBlock(block, subkeys[2], decrypt = true)
+        val encrypted = desEncryptBlock(decrypted, subkeys[1], decrypt = false)
+        desEncryptBlock(encrypted, subkeys[0], decrypt = true)
+    }
+}
+
 // Функция для перестановки
 fun permute(input: BitSet, output: BitSet, table: IntArray, n: Int) {
     for (i in 0 until n) {
@@ -48,6 +76,7 @@ fun permute(input: BitSet, output: BitSet, table: IntArray, n: Int) {
     }
 }
 
+// Генерация подключей
 fun generateKeys(key: BitSet, subkeys: MutableList<BitSet>) {
     val key56 = BitSet(56)
     permute(key, key56, PC1, 56)
@@ -79,7 +108,7 @@ fun generateKeys(key: BitSet, subkeys: MutableList<BitSet>) {
     }
 }
 
-// Функция для сдвига бит влево
+// Сдвиг бит влево
 fun BitSet.leftShift(shiftCount: Int) {
     for (i in (size() - 1 downTo shiftCount)) {
         set(i, get(i - shiftCount))
@@ -89,37 +118,7 @@ fun BitSet.leftShift(shiftCount: Int) {
     }
 }
 
-// Функция F
-fun fFunction(R: BitSet, subkey: BitSet): BitSet {
-    val expandedR = BitSet(48)
-    permute(R, expandedR, E, 48)
-
-    expandedR.xor(subkey)
-
-    val output = BitSet(32)
-    for (i in 0 until 8) {
-        val row = (expandedR[47 - 6 * i].toInt() shl 1) or expandedR[47 - 6 * i - 5].toInt()
-        val col = (expandedR[47 - 6 * i - 1].toInt() shl 3) or
-                (expandedR[47 - 6 * i - 2].toInt() shl 2) or
-                (expandedR[47 - 6 * i - 3].toInt() shl 1) or
-                expandedR[47 - 6 * i - 4].toInt()
-        val value = S_BOXES[i][row][col]
-
-        for (j in 0 until 4) {
-            output.set(31 - 4 * i - j, (value shr j) and 1 == 1)
-        }
-    }
-
-    val permutedOutput = BitSet(32)
-    permute(output, permutedOutput, P, 32)
-    return permutedOutput
-}
-
-private fun Boolean.toInt(): Int {
-    return if(this) 1 else 0
-}
-
-// DES-шифрование одного блока
+// Функция DES-шифрования одного блока
 fun desEncryptBlock(block: BitSet, subkeys: List<BitSet>, decrypt: Boolean = false): BitSet {
     val permutedBlock = BitSet(64)
     permute(block, permutedBlock, IP, 64)
@@ -147,6 +146,33 @@ fun desEncryptBlock(block: BitSet, subkeys: List<BitSet>, decrypt: Boolean = fal
     val output = BitSet(64)
     permute(combined, output, IP_INV, 64)
     return output
+}
+fun fFunction(R: BitSet, subkey: BitSet): BitSet {
+    val expandedR = BitSet(48)
+    permute(R, expandedR, E, 48)
+
+    expandedR.xor(subkey)
+
+    val output = BitSet(32)
+    for (i in 0 until 8) {
+        val row = (expandedR[47 - 6 * i].toInt() shl 1) or expandedR[47 - 6 * i - 5].toInt()
+        val col = (expandedR[47 - 6 * i - 1].toInt() shl 3) or
+                (expandedR[47 - 6 * i - 2].toInt() shl 2) or
+                (expandedR[47 - 6 * i - 3].toInt() shl 1) or
+                expandedR[47 - 6 * i - 4].toInt()
+        val value = S_BOXES[i][row][col]
+
+        for (j in 0 until 4) {
+            output.set(31 - 4 * i - j, (value shr j) and 1 == 1)
+        }
+    }
+
+    val permutedOutput = BitSet(32)
+    permute(output, permutedOutput, P, 32)
+    return permutedOutput
+}
+private fun Boolean.toInt(): Int {
+    return if(this) 1 else 0
 }
 
 val IP = intArrayOf(58, 50, 42, 34, 26, 18, 10, 2, 60, 52, 44, 36, 28, 20, 12, 4,
