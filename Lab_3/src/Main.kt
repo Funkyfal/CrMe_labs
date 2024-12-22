@@ -1,6 +1,46 @@
 import java.io.File
 import java.util.BitSet
 
+fun main() {
+    println("Введите режим работы (1 для шифрования, 2 для дешифрования):")
+    val mode = readLine()?.toIntOrNull() ?: error("Некорректный ввод")
+
+    val inputFileName = "in.bin"
+    val keyFileName = "key.bin"
+    val outputFileName = "out.bin"
+
+    // Загрузка данных из файлов
+    val inputFile = File(inputFileName)
+    val keyFile = File(keyFileName)
+
+    val inputBlocks = inputFile.readBytes().toList().chunked(8).map { BitSet.valueOf(it.toByteArray()) }
+    val keyBlocks = keyFile.readBytes().toList().chunked(8).map { BitSet.valueOf(it.toByteArray()) }
+    val key = keyBlocks.firstOrNull() ?: error("Ключ не найден")
+
+    // Генерация подключей
+    val subkeys = mutableListOf<BitSet>()
+    generateKeys(key, subkeys)
+
+    // Обработка блоков
+    val processedBlocks = when (mode) {
+        1 -> {
+            println("Шифрование...")
+            inputBlocks.map { block -> desEncryptBlock(block, subkeys) }
+        }
+        2 -> {
+            println("Дешифрование...")
+            inputBlocks.map { block -> desEncryptBlock(block, subkeys, decrypt = true) }
+        }
+        else -> error("Неверный режим работы")
+    }
+
+    // Запись результата в файл
+    val outputFile = File(outputFileName)
+    outputFile.writeBytes(processedBlocks.flatMap { it.toByteArray().toList() }.toByteArray())
+
+    println("Обработка завершена. Результат сохранён в $outputFileName")
+}
+
 // Функция для перестановки
 fun permute(input: BitSet, output: BitSet, table: IntArray, n: Int) {
     for (i in 0 until n) {
@@ -108,50 +148,6 @@ fun desEncryptBlock(block: BitSet, subkeys: List<BitSet>, decrypt: Boolean = fal
     permute(combined, output, IP_INV, 64)
     return output
 }
-
-// Загрузка файла
-fun loadFile(filename: String): List<BitSet> {
-    val file = File(filename)
-    val blocks = mutableListOf<BitSet>()
-    file.inputStream().use { input ->
-        val buffer = ByteArray(8)
-        while (input.read(buffer) > 0) {
-            blocks.add(BitSet.valueOf(buffer))
-        }
-    }
-    return blocks
-}
-
-// Сохранение файла
-fun saveFile(filename: String, blocks: List<BitSet>) {
-    val file = File(filename)
-    file.outputStream().use { output ->
-        for (block in blocks) {
-            output.write(block.toByteArray())
-        }
-    }
-}
-
-fun main() {
-    val blocks = loadFile("in.bin")
-    val keyBlocks = loadFile("key.bin")
-    val ivBlocks = loadFile("sync.bin")
-
-    val key = keyBlocks.firstOrNull() ?: error("Key not found")
-    val iv = ivBlocks.firstOrNull()
-
-    val subkeys = mutableListOf<BitSet>()
-    generateKeys(key, subkeys)
-
-    val encrypt = false // Измените на true для шифрования
-
-    val processedBlocks = blocks.map { block ->
-        if (encrypt) desEncryptBlock(block, subkeys) else desEncryptBlock(block, subkeys, decrypt = true)
-    }
-
-    saveFile("out.bin", processedBlocks)
-}
-
 
 val IP = intArrayOf(58, 50, 42, 34, 26, 18, 10, 2, 60, 52, 44, 36, 28, 20, 12, 4,
     62, 54, 46, 38, 30, 22, 14, 6, 64, 56, 48, 40, 32, 24, 16, 8,
