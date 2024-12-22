@@ -1,189 +1,155 @@
 import java.io.File
 import java.util.BitSet
 
-fun main(args: Array<String>) {
-    if (args.size < 5) {
-        println("Использование: <in.bin> <key.bin> <sync.bin> <encrypt/decrypt> <padding>")
-        return
-    }
-
-    val inputFilePath = args[0]
-    val keyFilePath = args[1]
-    //val syncFilePath = args[2] // Для режима ECB синхропосылка не используется
-    val operation = args[3] // "encrypt" или "decrypt"
-    //val paddingMode = args[4] // "ANSI"
-
-    val outputFilePath = "out.bin"
-
-    val key = File(keyFilePath).readBytes()
-    if (key.size != 24) {
-        println("Ключ должен быть длиной 24 байта (8 байт для каждого из 3 ключей).")
-        return
-    }
-
-    val key1 = key.sliceArray(0 until 8)
-    //val key2 = key.sliceArray(8 until 16)
-    //val key3 = key.sliceArray(16 until 24)
-
-    when (operation) {
-        "encrypt" -> {
-            val inputBytes = File(inputFilePath).readBytes()
-
-            println("paddedbytes content in hex:")
-            for (byte in inputBytes) {
-                print("%02X ".format(byte))
-            }
-            println()
-
-            val encryptedBytes = desEncrypt(inputBytes, key1)
-
-            println("encrypted content in hex:")
-            for (byte in encryptedBytes) {
-                print("%02X ".format(byte))
-            }
-            println()
-
-            File(outputFilePath).writeBytes(encryptedBytes)
-            println("Файл успешно зашифрован и сохранен в $outputFilePath")
-        }
-        "decrypt" -> {
-            val encryptedBytes = File(inputFilePath).readBytes()
-            val decryptedBytes = desDecrypt(encryptedBytes, key1)
-            File(outputFilePath).writeBytes(decryptedBytes)
-            println("Файл успешно расшифрован и сохранен в $outputFilePath")
-        }
-        else -> println("Некорректная операция. Укажите 'encrypt' или 'decrypt'.")
+// Функция для перестановки
+fun permute(input: BitSet, output: BitSet, table: IntArray, n: Int) {
+    for (i in 0 until n) {
+        output.set(n - i - 1, input.get(input.size() - table[i]))
     }
 }
 
-fun permute(input: BitSet, table: IntArray, size: Int): BitSet {
-    val output = BitSet(size)
-    for (i in table.indices) {
-        if (input[table[i] - 1]) {
-            output.set(i)
+fun generateKeys(key: BitSet, subkeys: MutableList<BitSet>) {
+    val key56 = BitSet(56)
+    permute(key, key56, PC1, 56)
+
+    val left = BitSet(28)
+    val right = BitSet(28)
+
+    for (i in 0 until 28) {
+        left.set(i, key56[i])
+        right.set(i, key56[28 + i])
+    }
+
+    for (round in 0 until 16) {
+        // Сдвиг влево
+        val shiftCount = SHIFT_TABLE[round]
+        left.leftShift(shiftCount)
+        right.leftShift(shiftCount)
+
+        // Перестановка PC2 для получения подключа
+        val combined = BitSet(56)
+        for (i in 0 until 28) {
+            combined.set(i, left[i])
+            combined.set(28 + i, right[i])
+        }
+        val subkey = BitSet(48)
+        permute(combined, subkey, PC2, 48)
+
+        subkeys.add(subkey)
+    }
+}
+
+// Функция для сдвига бит влево
+fun BitSet.leftShift(shiftCount: Int) {
+    for (i in (size() - 1 downTo shiftCount)) {
+        set(i, get(i - shiftCount))
+    }
+    for (i in 0 until shiftCount) {
+        set(i, false)
+    }
+}
+
+// Функция F
+fun fFunction(R: BitSet, subkey: BitSet): BitSet {
+    val expandedR = BitSet(48)
+    permute(R, expandedR, E, 48)
+
+    expandedR.xor(subkey)
+
+    val output = BitSet(32)
+    for (i in 0 until 8) {
+        val row = (expandedR[47 - 6 * i].toInt() shl 1) or expandedR[47 - 6 * i - 5].toInt()
+        val col = (expandedR[47 - 6 * i - 1].toInt() shl 3) or
+                (expandedR[47 - 6 * i - 2].toInt() shl 2) or
+                (expandedR[47 - 6 * i - 3].toInt() shl 1) or
+                expandedR[47 - 6 * i - 4].toInt()
+        val value = S_BOXES[i][row][col]
+
+        for (j in 0 until 4) {
+            output.set(31 - 4 * i - j, (value shr j) and 1 == 1)
         }
     }
+
+    val permutedOutput = BitSet(32)
+    permute(output, permutedOutput, P, 32)
+    return permutedOutput
+}
+
+private fun Boolean.toInt(): Int {
+    return if(this) 1 else 0
+}
+
+// DES-шифрование одного блока
+fun desEncryptBlock(block: BitSet, subkeys: List<BitSet>, decrypt: Boolean = false): BitSet {
+    val permutedBlock = BitSet(64)
+    permute(block, permutedBlock, IP, 64)
+
+    val L = BitSet(32)
+    val R = BitSet(32)
+    for (i in 0 until 32) {
+        L.set(31 - i, permutedBlock[63 - i])
+        R.set(31 - i, permutedBlock[31 - i])
+    }
+
+    for (round in 0 until 16) {
+        val temp = R.clone() as BitSet
+        val subkeyIndex = if (decrypt) 15 - round else round
+        R.xor(fFunction(R, subkeys[subkeyIndex]))
+        L.xor(temp)
+    }
+
+    val combined = BitSet(64)
+    for (i in 0 until 32) {
+        combined.set(63 - i, R[31 - i])
+        combined.set(31 - i, L[31 - i])
+    }
+
+    val output = BitSet(64)
+    permute(combined, output, IP_INV, 64)
     return output
 }
 
-fun shiftLeft(bits: BitSet, shifts: Int, size: Int): BitSet {
-    val shifted = BitSet(size)
-    for (i in 0 until size) {
-        if (bits[(i + shifts) % size]) {
-            shifted.set(i)
+// Загрузка файла
+fun loadFile(filename: String): List<BitSet> {
+    val file = File(filename)
+    val blocks = mutableListOf<BitSet>()
+    file.inputStream().use { input ->
+        val buffer = ByteArray(8)
+        while (input.read(buffer) > 0) {
+            blocks.add(BitSet.valueOf(buffer))
         }
     }
-    return shifted
+    return blocks
 }
 
-fun generateKeys(key: BitSet): Array<BitSet> {
-    val permutedKey = permute(key, PC1, 56)
-    val c = BitSet(28)
-    val d = BitSet(28)
-    for (i in 0 until 28) {
-        c[i] = permutedKey[i]
-        d[i] = permutedKey[i + 28]
-    }
-    val keys = Array(16) { BitSet(48) }
-    for (i in SHIFT_TABLE.indices) {
-        val shifts = SHIFT_TABLE[i]
-        shiftLeft(c, shifts, 28)
-        shiftLeft(d, shifts, 28)
-        val combined = BitSet(56)
-        for (j in 0 until 28) {
-            combined[j] = c[j]
-            combined[j + 28] = d[j]
-        }
-        keys[i] = permute(combined, PC2, 48)
-    }
-    return keys
-}
-
-fun f(right: BitSet, key: BitSet): BitSet {
-    val expanded = permute(right, E, 48)
-    expanded.xor(key)
-    val substituted = BitSet(32)
-    for (i in 0 until 8) {
-        val row = (if (expanded[6 * i]) 2 else 0) + (if (expanded[6 * i + 5]) 1 else 0)
-        val col = (if (expanded[6 * i + 1]) 8 else 0) +
-                (if (expanded[6 * i + 2]) 4 else 0) +
-                (if (expanded[6 * i + 3]) 2 else 0) +
-                (if (expanded[6 * i + 4]) 1 else 0)
-        val sBoxValue = S_BOXES[i][row][col]
-        for (j in 0 until 4) {
-            substituted.set(4 * i + j, (sBoxValue shr (3 - j)) and 1 == 1)
+// Сохранение файла
+fun saveFile(filename: String, blocks: List<BitSet>) {
+    val file = File(filename)
+    file.outputStream().use { output ->
+        for (block in blocks) {
+            output.write(block.toByteArray())
         }
     }
-    return permute(substituted, P, 32)
 }
 
-fun desEncryptBlock(block: BitSet, keys: Array<BitSet>): BitSet {
-    val permutedBlock = permute(block, IP, 64)
-    val left = BitSet(32)
-    val right = BitSet(32)
-    for (i in 0 until 32) {
-        left[i] = permutedBlock[i]
-        right[i] = permutedBlock[i + 32]
-    }
-    for (key in keys) {
-        val tempRight = right.clone() as BitSet
-        right.xor(f(right, key))
-        left.xor(tempRight)
-    }
-    val combined = BitSet(64)
-    for (i in 0 until 32) {
-        combined[i] = right[i]
-        combined[i + 32] = left[i]
-    }
-    return permute(combined, IP_INV, 64)
-}
+fun main() {
+    val blocks = loadFile("in.bin")
+    val keyBlocks = loadFile("key.bin")
+    val ivBlocks = loadFile("sync.bin")
 
-fun desEncrypt(data: ByteArray, key: ByteArray): ByteArray {
-    val dataBits = BitSet.valueOf(data)
-    val keyBits = BitSet.valueOf(key)
-    val keys = generateKeys(keyBits)
-    val encrypted = ByteArray(data.size)
-    for (i in data.indices step 8) {
-        val block = dataBits.get(i * 8, (i + 1) * 8)
-        val encryptedBlock = desEncryptBlock(block, keys)
-        encryptedBlock.toByteArray().copyInto(encrypted, i)
-    }
-    return encrypted
-}
+    val key = keyBlocks.firstOrNull() ?: error("Key not found")
+    val iv = ivBlocks.firstOrNull()
 
-fun desDecryptBlock(block: BitSet, keys: Array<BitSet>): BitSet {
-    val permutedBlock = permute(block, IP, 64)
-    val left = BitSet(32)
-    val right = BitSet(32)
-    for (i in 0 until 32) {
-        left[i] = permutedBlock[i]
-        right[i] = permutedBlock[i + 32]
-    }
-    // Применяем ключи в обратном порядке для расшифровки
-    for (key in keys.reversed()) {
-        val tempRight = right.clone() as BitSet
-        right.xor(f(right, key))
-        left.xor(tempRight)
-    }
-    val combined = BitSet(64)
-    for (i in 0 until 32) {
-        combined[i] = right[i]
-        combined[i + 32] = left[i]
-    }
-    return permute(combined, IP_INV, 64)
-}
+    val subkeys = mutableListOf<BitSet>()
+    generateKeys(key, subkeys)
 
-fun desDecrypt(data: ByteArray, key: ByteArray): ByteArray {
-    val dataBits = BitSet.valueOf(data)
-    val keyBits = BitSet.valueOf(key)
-    val keys = generateKeys(keyBits)
-    val decrypted = ByteArray(data.size)
-    for (i in data.indices step 8) {
-        val block = dataBits.get(i * 8, (i + 1) * 8)
-        val decryptedBlock = desDecryptBlock(block, keys)
-        decryptedBlock.toByteArray().copyInto(decrypted, i)
+    val encrypt = false // Измените на true для шифрования
+
+    val processedBlocks = blocks.map { block ->
+        if (encrypt) desEncryptBlock(block, subkeys) else desEncryptBlock(block, subkeys, decrypt = true)
     }
-    return decrypted
+
+    saveFile("out.bin", processedBlocks)
 }
 
 
@@ -279,6 +245,7 @@ val PC1 = intArrayOf(
     14, 6, 61, 53, 45, 37, 29,
     21, 13, 5, 28, 20, 12, 4
 )
+
 
 val P = intArrayOf(
     16, 7, 20, 21,
