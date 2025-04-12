@@ -1,11 +1,11 @@
-package mathUtils;
+package mathUtils.ExEuclid;
 
 import java.math.BigInteger;
 
 public class ExtendedEuclid {
 
     public static class ExtendedEuclidResult {
-        private final BigInteger x;
+        public final BigInteger x;
         private final BigInteger y;
         private final BigInteger gcd;
 

@@ -1,4 +1,4 @@
-package mathUtils;
+package mathUtils.modPow;
 
 import java.math.BigInteger;
 
