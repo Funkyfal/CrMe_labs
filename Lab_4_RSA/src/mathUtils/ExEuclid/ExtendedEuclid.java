@@ -26,6 +26,7 @@ public class ExtendedEuclid {
             return new ExtendedEuclidResult(a, BigInteger.ONE, BigInteger.ZERO);
         } else {
             ExtendedEuclidResult result = extendedEuclid(b, a.mod(b));
+            //b * x' + (a − ⌊a/b⌋ * b) * y' = a * y' + b * (x' − ⌊a/b⌋ * y')
             BigInteger x = result.y;
             BigInteger y = result.x.subtract(a.divide(b).multiply(result.y));
             return new ExtendedEuclidResult(result.gcd, x, y);

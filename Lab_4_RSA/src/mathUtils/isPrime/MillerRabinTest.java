@@ -5,19 +5,11 @@ import java.math.BigInteger;
 import static mathUtils.isPrime.FermatTest.uniformRandom;
 
 public class MillerRabinTest {
-    /**
-     * Тест Миллера–Рабина для проверки вероятной простоты числа.
-     *
-     * @param candidate число, которое проверяем
-     * @param rounds количество раундов
-     * @return true, если candidate проходит все раунды теста Миллера–Рабина, иначе false.
-     */
+
     public static boolean millerRabinTest(BigInteger candidate, int rounds) {
-        // Если candidate <= 3, можно обработать отдельно.
         if (candidate.compareTo(BigInteger.valueOf(3)) <= 0) {
             return true;
         }
-        // Разложение candidate-1 в виде 2^s * d, где d нечетно.
         BigInteger d = candidate.subtract(BigInteger.ONE);
         int s = 0;
         while (d.mod(BigInteger.TWO).equals(BigInteger.ZERO)) {
