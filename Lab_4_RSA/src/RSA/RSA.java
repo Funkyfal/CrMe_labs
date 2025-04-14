@@ -59,6 +59,10 @@ public class RSA {
 
         BigInteger n = p.multiply(q);
         BigInteger lambda = lcm(p.subtract(BigInteger.ONE), q.subtract(BigInteger.ONE));
+        BigInteger phi = (p.subtract(BigInteger.ONE)).multiply(q.subtract(BigInteger.ONE));
+        System.out.println("///////////////////////\n"+
+                lambda + "\n" + phi +
+                "/////////////////////////");
 
         BigInteger e = BigInteger.valueOf(65537);
         while (!e.gcd(lambda).equals(BigInteger.ONE)) {

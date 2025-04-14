@@ -1,5 +1,7 @@
 import RSA.Keys.CRTPrivateKey;
 import RSA.Keys.KeyPair;
+import RSA.Keys.PrivateKey;
+
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -11,7 +13,6 @@ import static RSA.RSA.*;
 
 public class Main {
 
-    // Пути к файлам (предполагается, что файлы находятся в рабочей директории)
     private static final Path MESSAGE_FILE = Path.of("Lab_4_RSA/src/message.txt");
     private static final Path CRYPT_FILE = Path.of("Lab_4_RSA/src/crypt.txt");
     private static final Path DECRYPT_FILE = Path.of("Lab_4_RSA/src/decrypt.txt");
@@ -20,10 +21,9 @@ public class Main {
         try (Scanner scanner = new Scanner(System.in)) {
             System.out.println("Введите номер операции:\n1 - Шифрование\n2 - Расшифрование");
             int operation = scanner.nextInt();
-            scanner.nextLine(); // вычитать остаток строки
+            scanner.nextLine();
 
-            if (operation == 1) { // Шифрование
-                // Считываем исходное сообщение из файла message.txt
+            if (operation == 1) {
                 String inputMessage = Files.readString(MESSAGE_FILE, StandardCharsets.UTF_8).trim();
                 if (inputMessage.isEmpty()) {
                     System.out.println("Файл message.txt пустой. Завершаем работу.");
@@ -32,19 +32,17 @@ public class Main {
                 System.out.println("Исходное сообщение (считанное из message.txt):");
                 System.out.println(inputMessage);
 
-                // Выбор способа генерации ключей
                 System.out.println("Выберите способ генерации ключей:");
                 System.out.println("1: С использованием функции Эйлера");
                 System.out.println("2: С использованием функции Кармайкла");
                 System.out.println("3: С использованием оптимизации CRT (с сохранением p и q)");
                 int keyOption = scanner.nextInt();
 
-                // Ввод параметров
                 System.out.println("Введите количество раундов для тестов на простоту (например, 100):");
                 int primeTestRounds = scanner.nextInt();
                 System.out.println("Введите битовую длину модуля (например, 1024 или 2048):");
                 int modulusBitLength = scanner.nextInt();
-                scanner.nextLine(); // чистим буфер
+                scanner.nextLine();
 
                 int expOption;
                 KeyPair keys;
@@ -77,15 +75,11 @@ public class Main {
                     return;
                 }
 
-                // Вывод ключей в консоль
                 System.out.println("\nПубличный ключ:");
                 System.out.println(keys.publicKey);
                 System.out.println("\nПриватный ключ:");
                 System.out.println(keys.privateKey);
 
-                // Сохраняем ключи в файл crypt.txt
-                // Для простых ключей (Эйлер/Кармайкл) записываем: n, e, d (по одной строке)
-                // Для CRT ключей записываем: n, e, d, p, q, dP, dQ, qInv
                 StringBuilder keyData = new StringBuilder();
                 keyData.append(keys.publicKey.n).append(System.lineSeparator());
                 keyData.append(keys.publicKey.e).append(System.lineSeparator());
@@ -101,10 +95,8 @@ public class Main {
                 Files.writeString(CRYPT_FILE, keyData.toString(), StandardCharsets.UTF_8);
                 System.out.println("Ключевая информация сохранена в файл crypt.txt");
 
-                // Преобразование исходного текста в BigInteger
                 BigInteger message = new BigInteger(inputMessage.getBytes(StandardCharsets.UTF_8));
 
-                // Шифрование
                 BigInteger ciphertext;
                 if (keyOption == 1 || keyOption == 2) {
                     if (expOption == 1) {
@@ -112,27 +104,24 @@ public class Main {
                     } else {
                         ciphertext = encryptWithMontgomery(message, keys.publicKey);
                     }
-                } else {  // для CRT-ключей – выбор метода шифрования
+                } else {
                     if (expOption == 1) {
                         ciphertext = encryptWithModPowSimple(message, keys.publicKey);
                     } else {
                         ciphertext = encryptWithMontgomery(message, keys.publicKey);
                     }
                 }
-                // Записываем зашифрованный текст в message.txt (перезаписываем файл) и выводим на консоль.
                 String cipherStr = ciphertext.toString();
                 Files.writeString(MESSAGE_FILE, cipherStr, StandardCharsets.UTF_8);
                 System.out.println("Зашифрованное сообщение (BigInteger в виде строки):");
                 System.out.println(cipherStr);
-            } else if (operation == 2) { // Расшифрование
-                // Считываем зашифрованное сообщение из message.txt
+            } else if (operation == 2) {
                 String cipherStr = Files.readString(MESSAGE_FILE, StandardCharsets.UTF_8).trim();
                 if (cipherStr.isEmpty()) {
                     System.out.println("Файл message.txt пустой. Завершаем работу.");
                     return;
                 }
                 BigInteger ciphertext = new BigInteger(cipherStr);
-                // Считываем ключевую информацию из crypt.txt
                 List<String> keyLines = Files.readAllLines(CRYPT_FILE, StandardCharsets.UTF_8);
                 if (keyLines.size() < 3) {
                     System.out.println("В файле crypt.txt недостаточно данных для расшифрования.");
@@ -141,8 +130,7 @@ public class Main {
                 BigInteger n = new BigInteger(keyLines.get(0).trim());
                 BigInteger e = new BigInteger(keyLines.get(1).trim());
                 BigInteger d = new BigInteger(keyLines.get(2).trim());
-                // Если ключей 3 варианта – простой (Эйлер или Кармайкл), будет 3 строки; если CRT – должно быть 8 строк.
-                Object privateKey;
+                PrivateKey privateKey;
                 if (keyLines.size() >= 8) {
                     BigInteger p = new BigInteger(keyLines.get(3).trim());
                     BigInteger q = new BigInteger(keyLines.get(4).trim());
@@ -150,20 +138,18 @@ public class Main {
                 } else {
                     privateKey = new RSA.Keys.PrivateKey(n, d);
                 }
-                // Для расшифрования предлагаем выбрать метод возведения в степень (простой или Монтгомери)
                 System.out.println("Выберите метод возведения в степень для расшифрования:");
                 System.out.println("1: Простой метод");
                 System.out.println("2: Метод Монтгомери");
                 int expOption = scanner.nextInt();
                 BigInteger decrypted;
                 if (privateKey instanceof CRTPrivateKey) {
-                    // При использовании CRT оптимизации расшифрование выполняется методом decryptWithCRT
                     decrypted = decryptWithCRT(ciphertext, (CRTPrivateKey) privateKey);
                 } else {
                     if (expOption == 1) {
-                        decrypted = decryptWithModPowSimple(ciphertext, (RSA.Keys.PrivateKey) privateKey);
+                        decrypted = decryptWithModPowSimple(ciphertext, privateKey);
                     } else {
-                        decrypted = decryptWithMontgomery(ciphertext, (RSA.Keys.PrivateKey) privateKey);
+                        decrypted = decryptWithMontgomery(ciphertext, privateKey);
                     }
                 }
                 String decryptedStr = new String(decrypted.toByteArray(), StandardCharsets.UTF_8);

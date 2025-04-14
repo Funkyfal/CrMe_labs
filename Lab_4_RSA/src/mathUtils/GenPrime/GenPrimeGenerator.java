@@ -16,7 +16,6 @@ public class GenPrimeGenerator {
                 .setBit(bitLength - 1) // гарантирует нужную битовую длину
                 .setBit(0);            // гарантирует нечётность
 
-        // Пока кандидат не проходит все тесты, генерируем новое число.
         while (!(fermatTest(candidate, rounds)
                 && millerRabinTest(candidate, rounds)
                 && solovayStrassenTest(candidate, rounds))) {
