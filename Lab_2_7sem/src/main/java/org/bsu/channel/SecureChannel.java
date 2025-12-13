@@ -40,17 +40,31 @@ public class SecureChannel {
     }
 
     public byte[] unprotect(byte[] packet) throws Exception {
-        if (packet.length < 16 + 32) throw new IllegalArgumentException("Invalid packet");
-        byte[] iv = Arrays.copyOfRange(packet, 0, 16);
-        byte[] mac = Arrays.copyOfRange(packet, packet.length - 32, packet.length);
-        byte[] cipher = Arrays.copyOfRange(packet, 16, packet.length - 32);
+        final int ivLen = 16;
+        if (packet == null || packet.length < ivLen) throw new IllegalArgumentException("Invalid packet");
+
+        // Определяем длину MAC динамически — запросив длину у алгоритма через CryptoUtils.
+        // computeMac(K1, new byte[0]) вернёт MAC от пустых данных — нам нужна только длина результата.
+        byte[] macSample = CryptoUtils.computeMac(K1, new byte[0]);
+        int macLen = macSample.length;
+
+        if (packet.length < ivLen + macLen) throw new IllegalArgumentException("Invalid packet (too short for IV+MAC)");
+
+        byte[] iv = Arrays.copyOfRange(packet, 0, ivLen);
+        byte[] mac = Arrays.copyOfRange(packet, packet.length - macLen, packet.length);
+        byte[] cipher = Arrays.copyOfRange(packet, ivLen, packet.length - macLen);
+
+        // recompute MAC and compare
         byte[] macInput = new byte[iv.length + cipher.length];
         System.arraycopy(iv, 0, macInput, 0, iv.length);
         System.arraycopy(cipher, 0, macInput, iv.length, cipher.length);
+
         byte[] expected = CryptoUtils.computeMac(K1, macInput);
         if (!Arrays.equals(expected, mac)) throw new SecurityException("MAC failed");
+
         byte[] plain = CryptoUtils.decryptCFB(K2, iv, cipher);
         System.out.println("Unprotected plain (hex): " + HexUtils.toHex(plain));
         return plain;
     }
+
 }

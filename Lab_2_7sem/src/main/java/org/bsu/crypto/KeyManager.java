@@ -29,7 +29,7 @@ public class KeyManager {
     }
 
     public KeyPairData generateAndSave(String name) throws Exception {
-        KeyPairData kp = null;
+        KeyPairData kp;
         try {
             kp = CryptoUtils.generateLongTermKeyPair();
         } catch (Throwable t) {
@@ -39,10 +39,6 @@ public class KeyManager {
             throw new Exception("Key pair generation failed for " + name, t);
         }
 
-        // Проверки: не даём сохранять null-значения
-        if (kp == null) {
-            throw new IllegalStateException("generateLongTermKeyPair returned null KeyPairData");
-        }
         if (kp.getPrivateKey() == null || kp.getPublicKey() == null) {
             System.err.println("DEBUG: Generated KeyPairData has null part(s)."
                     + " priv==null? " + (kp.getPrivateKey() == null)

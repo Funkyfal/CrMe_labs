@@ -4,17 +4,13 @@ import by.bcrypto.bee2j.provider.BrngSecureRandom;
 import org.bsu.model.KeyPairData;
 
 import javax.crypto.Cipher;
-import javax.crypto.KeyAgreement;
 import javax.crypto.Mac;
 import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 import java.security.*;
-import java.security.spec.PKCS8EncodedKeySpec;
-import java.security.spec.X509EncodedKeySpec;
 import java.util.Arrays;
 import java.lang.reflect.Field;
 import java.lang.reflect.Constructor;
-import java.security.spec.KeySpec;
 
 public class CryptoUtils {
     private static final BrngSecureRandom RNG = new BrngSecureRandom();
@@ -71,14 +67,7 @@ public class CryptoUtils {
         return generateLongTermKeyPair();
     }
 
-    // -------- Validate public key with Bee2 KeyFactory (BIGN) ----------
-    public static boolean validatePublicKey(byte[] pubEncoded) throws Exception {
-        KeyFactory kf = KeyFactory.getInstance("BIGN", PROVIDER);
-        X509EncodedKeySpec x509 = new X509EncodedKeySpec(pubEncoded);
-        PublicKey pub = kf.generatePublic(x509);
-        // If no exception, assume valid (Bee2 does heavy checks on import)
-        return pub != null;
-    }
+
 
     // -------- Password -> point (bake-swu) ----------
     // We'll attempt to call provider-level "BIGN" factory to create point via bake-swu.
@@ -187,4 +176,30 @@ public class CryptoUtils {
         byte[] K2 = Arrays.copyOfRange(derived, len, len * 2);
         return new byte[][]{K1, K2};
     }
+
+    // sign data with raw BIGN private bytes (private scalar)
+    public static byte[] signWithBignPrivate(byte[] privBytes, byte[] data) throws Exception {
+        // construct BignPrivateKey via reflection
+        Class<?> privCls = Class.forName("by.bcrypto.bee2j.provider.BignPrivateKey");
+        Constructor<?> cons = privCls.getConstructor(byte[].class);
+        cons.setAccessible(true);
+        Object privObj = cons.newInstance((Object) privBytes);
+        Signature sig = Signature.getInstance("BignWithBash256", PROVIDER);
+        sig.initSign((PrivateKey) privObj);
+        sig.update(data);
+        return sig.sign();
+    }
+
+    // verify data with raw BIGN public bytes
+    public static boolean verifyWithBignPublic(byte[] pubBytes, byte[] data, byte[] signature) throws Exception {
+        Class<?> pubCls = Class.forName("by.bcrypto.bee2j.provider.BignPublicKey");
+        Constructor<?> cpub = pubCls.getConstructor(byte[].class);
+        cpub.setAccessible(true);
+        Object pubObj = cpub.newInstance((Object) pubBytes);
+        Signature sig = Signature.getInstance("BignWithBash256", PROVIDER);
+        sig.initVerify((PublicKey) pubObj);
+        sig.update(data);
+        return sig.verify(signature);
+    }
+
 }
